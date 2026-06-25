@@ -1,8 +1,14 @@
 const Subspace = require("../models/Subspace");
 const Post = require("../models/Post");
 const Comment = require("../models/Comment");
+const {
+  getCache,
+  setCache,
+  invalidateCache,
+  CACHE_KEYS,
+  CACHE_TTL,
+} = require("../middleware/cache");
 
-// ================= UTILS =================
 async function findSubspaceByIdentifier(rawIdentifier) {
   const identifier = (rawIdentifier || "").trim();
   const normalizedName = identifier.toLowerCase();
@@ -12,15 +18,7 @@ async function findSubspaceByIdentifier(rawIdentifier) {
   }).lean();
 }
 
-/**
- * Sanitize a post for a given viewer.
- * - Always includes `isOwner` so the client can show/hide delete.
- * - For anonymous posts, replaces author displayName with "Anonymous"
- *   and strips author._id so other users can't identify the poster.
- *   The owner still sees their own post as deletable via `isOwner`.
- */
 function sanitizePost(post, userId) {
-  // author can be a populated object { _id, displayName } or a raw ObjectId
   const authorId = (
     post.author?._id?.toString() ??
     post.author?.toString() ??
@@ -32,19 +30,16 @@ function sanitizePost(post, userId) {
     ? (post.upvotes ?? []).some((id) => id.toString() === userId.toString())
     : false;
 
-  // Always mask author identity for anonymous posts — no _id, no displayName leak
   const author = post.isAnonymous
     ? { displayName: "Anonymous" }
     : post.author ?? { displayName: "Unknown" };
 
-  // Destructure the raw author out so it can never leak through the spread,
-  // then rebuild with the sanitized author.
   const { author: _rawAuthor, upvotes: _up, ...rest } = post;
 
   return {
     ...rest,
     author,
-    isOwner,   // client uses this for delete button — never exposes real authorId
+    isOwner,
     hasUpvoted,
   };
 }
@@ -68,7 +63,6 @@ function sanitizeComment(comment, userId) {
   return { ...comment, isOwner };
 }
 
-// ================= SUBSPACES =================
 async function createSubspace(req, res) {
   try {
     const { name, description, isPrivate } = req.body;
@@ -101,6 +95,8 @@ async function createSubspace(req, res) {
       postCount: 0,
     });
 
+    invalidateCache(CACHE_KEYS.PUBLIC_SUBSPACES);
+
     res.status(201).json(subspace);
   } catch {
     res.status(500).json({ error: "Failed to create subspace" });
@@ -109,11 +105,16 @@ async function createSubspace(req, res) {
 
 async function getSubspaces(req, res) {
   try {
+    const cached = await getCache(CACHE_KEYS.PUBLIC_SUBSPACES);
+    if (cached) return res.json(cached);
+
     const subspaces = await Subspace.find({ isPrivate: false })
       .sort({ memberCount: -1 })
       .limit(50)
       .select("name slug memberCount postCount description")
       .lean();
+
+    setCache(CACHE_KEYS.PUBLIC_SUBSPACES, subspaces, CACHE_TTL.PUBLIC_SUBSPACES);
 
     res.json(subspaces);
   } catch {
@@ -167,6 +168,8 @@ async function deleteSubspace(req, res) {
     await Comment.deleteMany({ subspace: subspace._id });
     await Subspace.deleteOne({ _id: subspace._id });
 
+    invalidateCache(CACHE_KEYS.PUBLIC_SUBSPACES);
+
     res.json({ deleted: true });
   } catch {
     res.status(500).json({ error: "Failed" });
@@ -187,13 +190,14 @@ async function joinSubspace(req, res) {
       await subspace.save();
     }
 
+    invalidateCache(CACHE_KEYS.PUBLIC_SUBSPACES);
+
     res.json({ joined: true });
   } catch {
     res.status(500).json({ error: "Failed" });
   }
 }
 
-// ================= POSTS =================
 async function createPost(req, res) {
   try {
     const { title, content, isAnonymous, tags } = req.body;
@@ -213,6 +217,8 @@ async function createPost(req, res) {
     Subspace.updateOne({ _id: subspace._id }, { $inc: { postCount: 1 } }).catch(
       () => {},
     );
+
+    invalidateCache(CACHE_KEYS.PUBLIC_SUBSPACES);
 
     res.status(201).json(post);
   } catch {
@@ -288,8 +294,6 @@ async function deletePost(req, res) {
     const post = await Post.findById(req.params.postId);
     if (!post) return res.status(404).json({ error: "Not found" });
 
-    // Authorization is always checked against the real author field in DB,
-    // regardless of whether the post is anonymous
     if (!post.author.equals(req.user._id)) {
       return res.status(403).json({ error: "Not allowed" });
     }
@@ -297,11 +301,12 @@ async function deletePost(req, res) {
     await Comment.deleteMany({ post: post._id });
     await Post.deleteOne({ _id: post._id });
 
-    // Decrement post count
     Subspace.updateOne(
       { _id: post.subspace },
       { $inc: { postCount: -1 } },
     ).catch(() => {});
+
+    invalidateCache(CACHE_KEYS.PUBLIC_SUBSPACES);
 
     res.json({ deleted: true });
   } catch {
@@ -309,7 +314,6 @@ async function deletePost(req, res) {
   }
 }
 
-// ================= COMMENTS =================
 async function createComment(req, res) {
   try {
     const { content, isAnonymous } = req.body;
@@ -321,7 +325,6 @@ async function createComment(req, res) {
       isAnonymous: isAnonymous === true || isAnonymous === "true",
     });
 
-    // Increment comment count on the post
     Post.updateOne(
       { _id: req.params.postId },
       { $inc: { commentCount: 1 } },
@@ -338,14 +341,12 @@ async function deleteComment(req, res) {
     const comment = await Comment.findById(req.params.commentId);
     if (!comment) return res.status(404).json({ error: "Not found" });
 
-    // Authorization checked against real author, regardless of anonymity
     if (!comment.author.equals(req.user._id)) {
       return res.status(403).json({ error: "Not allowed" });
     }
 
     await Comment.deleteOne({ _id: comment._id });
 
-    // Decrement comment count on the post
     Post.updateOne(
       { _id: comment.post },
       { $inc: { commentCount: -1 } },
@@ -373,7 +374,6 @@ async function getComments(req, res) {
   }
 }
 
-// ================= FEED =================
 async function getFeed(req, res) {
   try {
     const sort =
@@ -400,7 +400,6 @@ async function getUserSubspaces(req, res) {
   try {
     const userId = req.user._id;
 
-    // Phase 1: two parallel queries instead of three sequential
     const [memberOrCreated, authoredPostSubspaceIds] = await Promise.all([
       Subspace.find({ $or: [{ members: userId }, { createdBy: userId }] })
         .select("name slug memberCount description createdBy")
@@ -408,16 +407,13 @@ async function getUserSubspaces(req, res) {
       Post.find({ author: userId }).distinct("subspace"),
     ]);
 
-    // Collect IDs already found
     const map = new Map();
     memberOrCreated.forEach((s) => map.set(s._id.toString(), s));
 
-    // Only fetch posted-in subspaces we don't already have
     const missingIds = authoredPostSubspaceIds.filter(
       (id) => !map.has(id.toString()),
     );
 
-    // Phase 2: fetch any missing subspaces + post counts in parallel
     const [postedIn, counts] = await Promise.all([
       missingIds.length > 0
         ? Subspace.find({ _id: { $in: missingIds } })
@@ -448,7 +444,6 @@ async function getUserSubspaces(req, res) {
       counts.map((c) => [c._id.toString(), c.count]),
     );
 
-    // Fire-and-forget cache sync
     const bulkOps = subspaceList.map((s) => ({
       updateOne: {
         filter: { _id: s._id },

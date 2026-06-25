@@ -2,9 +2,10 @@ const express = require("express");
 const http = require("http");
 const cors = require("cors");
 const helmet = require("helmet");
-const rateLimit = require("express-rate-limit");
 const { Server } = require("socket.io");
 const { config, connectDB, redis } = require("./config");
+const requestLogger = require("./middleware/requestLogger");
+const limiter = require("./middleware/rateLimiter");
 const authRoutes = require("./routes/auth");
 const chatRoutes = require("./routes/chat");
 const forumRoutes = require("./routes/forum");
@@ -22,15 +23,12 @@ const io = new Server(server, {
   transports: ["polling", "websocket"],
 });
 
+app.use(requestLogger);
+
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: config.corsOrigin, credentials: true }));
 app.use(express.json({ limit: "10kb" }));
 
-const limiter = rateLimit({
-  windowMs: config.rateLimitWindowMs,
-  max: config.rateLimitMax,
-  message: { error: "Too many requests, please try again later" },
-});
 app.use("/api", limiter);
 
 app.use("/api/auth", authRoutes);

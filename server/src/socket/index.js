@@ -1,5 +1,5 @@
 const jwt = require("jsonwebtoken");
-const { config } = require("../config");
+const { config, redis } = require("../config");
 const User = require("../models/User");
 const { detectEmotion, selectPersonality } = require("../services/emotion");
 const { checkSafety } = require("../services/safety");
@@ -13,7 +13,27 @@ const {
 } = require("../services/memory");
 const { getPersonality } = require("../services/personality");
 
+function attachRedisAdapter(io) {
+  if (!redis || redis.status !== "ready") {
+    console.log("[socket] Redis not available, using in-memory adapter");
+    return;
+  }
+
+  try {
+    const { createAdapter } = require("@socket.io/redis-adapter");
+
+    const pubClient = redis.duplicate();
+    const subClient = redis.duplicate();
+
+    io.adapter(createAdapter(pubClient, subClient));
+    console.log("[socket] Redis adapter attached (multi-instance ready)");
+  } catch (err) {
+    console.warn("[socket] Redis adapter init failed, using in-memory:", err.message);
+  }
+}
+
 function setupSocket(io) {
+  attachRedisAdapter(io);
   io.use(async (socket, next) => {
     try {
       const token = socket.handshake.auth.token;
@@ -21,7 +41,6 @@ function setupSocket(io) {
 
       const decoded = jwt.verify(token, config.jwtSecret);
 
-      // Lean select — only the fields the socket handler actually reads
       const user = await User.findById(decoded.id)
         .select("_id displayName preferences")
         .lean();
@@ -39,7 +58,6 @@ function setupSocket(io) {
 
     socket.join(`user:${socket.user._id}`);
 
-    // Get user's sessions
     socket.on("get_sessions", async () => {
       try {
         const sessions = await getUserSessions(socket.user._id);
@@ -49,7 +67,6 @@ function setupSocket(io) {
       }
     });
 
-    // Load session messages
     socket.on("load_session", async (data) => {
       try {
         const { sessionId } = data;
@@ -68,7 +85,6 @@ function setupSocket(io) {
       }
     });
 
-    // Delete session
     socket.on("delete_session", async (data) => {
       try {
         const { sessionId } = data;
@@ -142,7 +158,6 @@ function setupSocket(io) {
         const personality = getPersonality(personalityType);
 
         const memory = await getMemoryContext(userId, sessionId);
-        // store user message (non-blocking)
         const addUserMsgPromise = addMessage(
           userId,
           sessionId,
@@ -152,7 +167,6 @@ function setupSocket(io) {
           null,
         );
 
-        // generate reply (main delay)
         const reply = await generateWithFallback(
           message,
           personalityType,
@@ -160,7 +174,6 @@ function setupSocket(io) {
           memory.conversationHistory,
         );
 
-        // 🔥 IMMEDIATE RESPONSE (don't wait DB)
         socket.emit("typing", { sessionId, isTyping: false });
 
         socket.emit("receive_message", {
@@ -175,7 +188,6 @@ function setupSocket(io) {
           isCrisis: false,
         });
 
-        // background DB writes
         await Promise.all([
           addUserMsgPromise,
           addMessage(
@@ -188,14 +200,13 @@ function setupSocket(io) {
           ),
         ]);
 
-        // fetch sessions async (non-blocking)
         getUserSessions(userId).then((sessions) => {
           socket.emit("sessions_list", { sessions });
         });
       } catch (err) {
         console.error("Socket message error:", err);
 
-        const { sessionId } = data || {}; // ← FIX
+        const { sessionId } = data || {};
 
         if (sessionId) {
           socket.emit("typing", { sessionId, isTyping: false });
