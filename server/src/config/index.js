@@ -1,6 +1,6 @@
 if (process.env.NODE_ENV !== "production") {
   require("dotenv").config({
-    path: require("path").resolve(__dirname, "../../../.env"),
+    path: require("path").resolve(__dirname, "../../.env"),
   });
 }
 
@@ -43,26 +43,40 @@ const connectDB = async () => {
   }
 };
 
-let redis = null;
-let redisWarned = false;
-
-try {
-  redis = new Redis(config.redisUrl, {
+function createRedisClient() {
+  return new Redis(config.redisUrl, {
     maxRetriesPerRequest: 1,
-    retryStrategy: () => null,
+    retryStrategy: (times) => (times > 2 ? null : 500),
+    connectTimeout: 5000,
     lazyConnect: true,
     enableOfflineQueue: false,
   });
-
-  redis.on("connect", () => console.log("Redis connected"));
-  redis.on("error", () => {
-    if (!redisWarned) {
-      console.warn("Redis unavailable - running without cache");
-      redisWarned = true;
-    }
-  });
-} catch (err) {
-  console.warn("Redis disabled");
 }
 
-module.exports = { config, connectDB, redis };
+let redis = null;
+
+async function connectRedis() {
+  try {
+    redis = createRedisClient();
+    redis.on("error", (err) => console.warn("Redis error:", err.message));
+    await redis.connect();
+    console.log("Redis connected successfully");
+    return redis;
+  } catch (err) {
+    console.warn("Redis unavailable - running without cache:", err.message);
+    redis = null;
+    return null;
+  }
+}
+
+function getRedis() {
+  return redis;
+}
+
+module.exports = {
+  config,
+  connectDB,
+  connectRedis,
+  getRedis,
+  createRedisClient,
+};

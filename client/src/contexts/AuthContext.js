@@ -3,7 +3,7 @@ import axios from "axios";
 
 const AuthContext = createContext(null);
 
-const API_URL = process.env.REACT_APP_API_URL || "http://localhost:5001/api";
+const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001/api";
 const authApi = axios.create();
 
 export function AuthProvider({ children }) {
@@ -39,13 +39,13 @@ export function AuthProvider({ children }) {
       email,
       password,
     });
-    
+
     const { token, user: loggedInUser } = res.data;
     authApi.defaults.headers.common["Authorization"] = `Bearer ${token}`;
     localStorage.setItem("token", token);
     setToken(token);
     setUser({ ...loggedInUser, id: loggedInUser._id || loggedInUser.id });
-    
+
     return res.data;
   };
 
@@ -56,13 +56,13 @@ export function AuthProvider({ children }) {
       displayName,
       whatBringsYou,
     });
-    
+
     const { token, user: registeredUser } = res.data;
     authApi.defaults.headers.common["Authorization"] = `Bearer ${token}`;
     localStorage.setItem("token", token);
     setToken(token);
     setUser({ ...registeredUser, id: registeredUser._id || registeredUser.id });
-    
+
     return res.data;
   };
 

@@ -4,7 +4,7 @@ import { useAuth } from "../contexts/AuthContext";
 import axios from "axios";
 import "./Forum.css";
 
-const API_URL = process.env.REACT_APP_API_URL || "http://localhost:5001/api";
+const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001/api";
 
 export default function Forum() {
   const navigate = useNavigate();
@@ -126,7 +126,6 @@ export default function Forum() {
 
     // ONLY reset sort if not already hot
     setSortBy((prev) => (prev === "hot" ? prev : "hot"));
-
   }, [subspaceSlug, postId]);
 
   useEffect(() => {
@@ -171,18 +170,17 @@ export default function Forum() {
       setCurrentPost(null);
       setPosts([]);
       const identifier = encodeURIComponent(slug);
-      
+
       const [postsRes, subspaceRes] = await Promise.all([
         axios.get(
           `${API_URL}/forum/s/${identifier}/posts?sort=${sort}`,
           authHeaders,
         ),
-        axios.get(
-          `${API_URL}/forum/s/${identifier}`,
-          authHeaders,
-        ).catch(() => ({ data: null }))
+        axios
+          .get(`${API_URL}/forum/s/${identifier}`, authHeaders)
+          .catch(() => ({ data: null })),
       ]);
-      
+
       setPosts(postsRes.data);
       if (subspaceRes.data) {
         setActiveSubspaceData(subspaceRes.data);
@@ -406,7 +404,10 @@ export default function Forum() {
 
   const isSubspaceCreator = (s) => {
     if (!s || !user || !s.createdBy) return false;
-    const creatorId = typeof s.createdBy === 'object' ? String(s.createdBy._id) : String(s.createdBy);
+    const creatorId =
+      typeof s.createdBy === "object"
+        ? String(s.createdBy._id)
+        : String(s.createdBy);
     const userId = String(user._id || user.id);
     return creatorId === userId;
   };
@@ -481,9 +482,7 @@ export default function Forum() {
                     className="search-result-item"
                     onClick={() => {
                       const target = s.slug || s.name;
-                      navigate(
-                        `/forum/s/${encodeURIComponent(target)}`,
-                      );
+                      navigate(`/forum/s/${encodeURIComponent(target)}`);
                       setSidebarOpen(false);
                       setSearchQuery("");
                       setSearchResults([]);
@@ -519,7 +518,9 @@ export default function Forum() {
               }
             >
               <span className="subspace-prefix">#</span>
-              <span className="subspace-name" title={s.name}>{s.name}</span>
+              <span className="subspace-name" title={s.name}>
+                {s.name}
+              </span>
               <div className="subspace-count-menu">
                 <span className="member-count">
                   {formatCompactCount(s.postCount ?? 0)}
@@ -746,7 +747,8 @@ export default function Forum() {
                       className="subspace-tag"
                       onClick={(e) => {
                         e.stopPropagation();
-                        const target = post.subspace?.slug || post.subspace?.name;
+                        const target =
+                          post.subspace?.slug || post.subspace?.name;
                         if (target) {
                           navigate(`/forum/s/${encodeURIComponent(target)}`);
                           fetchSubspacePosts(target, sortBy);
@@ -836,7 +838,12 @@ export default function Forum() {
               {activeSubspaceData && activeSubspaceData.description && (
                 <div className="guidelines-banner subspace-info-banner">
                   <div className="banner-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
                       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                     </svg>
                   </div>
@@ -978,7 +985,9 @@ export default function Forum() {
                   <span
                     className="subspace-tag"
                     onClick={() => {
-                      const target = currentPost.subspace?.slug || currentPost.subspace?.name;
+                      const target =
+                        currentPost.subspace?.slug ||
+                        currentPost.subspace?.name;
                       if (target) {
                         navigate(`/forum/s/${encodeURIComponent(target)}`);
                         fetchSubspacePosts(target, sortBy);

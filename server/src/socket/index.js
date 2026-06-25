@@ -1,5 +1,5 @@
 const jwt = require("jsonwebtoken");
-const { config, redis } = require("../config");
+const { config, getRedis, createRedisClient } = require("../config");
 const User = require("../models/User");
 const { detectEmotion, selectPersonality } = require("../services/emotion");
 const { checkSafety } = require("../services/safety");
@@ -13,8 +13,9 @@ const {
 } = require("../services/memory");
 const { getPersonality } = require("../services/personality");
 
-function attachRedisAdapter(io) {
-  if (!redis || redis.status !== "ready") {
+async function attachRedisAdapter(io) {
+  const liveRedis = getRedis();
+  if (!liveRedis) {
     console.log("[socket] Redis not available, using in-memory adapter");
     return;
   }
@@ -22,18 +23,24 @@ function attachRedisAdapter(io) {
   try {
     const { createAdapter } = require("@socket.io/redis-adapter");
 
-    const pubClient = redis.duplicate();
-    const subClient = redis.duplicate();
+    const pubClient = createRedisClient();
+    const subClient = createRedisClient();
+
+    await Promise.all([pubClient.connect(), subClient.connect()]);
 
     io.adapter(createAdapter(pubClient, subClient));
     console.log("[socket] Redis adapter attached (multi-instance ready)");
   } catch (err) {
-    console.warn("[socket] Redis adapter init failed, using in-memory:", err.message);
+    console.warn(
+      "[socket] Redis adapter init failed, using in-memory:",
+      err.message,
+    );
   }
 }
 
-function setupSocket(io) {
-  attachRedisAdapter(io);
+async function setupSocket(io) {
+  await attachRedisAdapter(io);
+
   io.use(async (socket, next) => {
     try {
       const token = socket.handshake.auth.token;

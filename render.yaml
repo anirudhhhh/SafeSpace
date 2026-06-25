@@ -2,7 +2,7 @@ services:
   - type: web
     name: safespace-server
     env: node
-    region: singapore # 👈 ADD THIS
+    region: singapore
     rootDir: server
     plan: free
     buildCommand: npm ci --omit=dev
@@ -41,7 +41,7 @@ services:
   - type: web
     name: safespace-client
     env: node
-    region: singapore # 👈 ADD THIS
+    region: singapore
     rootDir: client
     plan: free
     buildCommand: REACT_APP_API_URL=https://safespace-server-x3um.onrender.com/api REACT_APP_SOCKET_URL=https://safespace-server-x3um.onrender.com npm install && npm run build

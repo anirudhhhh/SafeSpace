@@ -1,50 +1,44 @@
 const rateLimit = require("express-rate-limit");
-const { config, redis } = require("../config");
+const { RedisStore } = require("rate-limit-redis");
+const { config, getRedis } = require("../config");
 
-let redisStore = null;
-let storeInitAttempted = false;
+function buildLimiter(overrides = {}) {
+  const liveRedis = getRedis();
+  let store;
 
-function getRedisStore() {
-  if (storeInitAttempted) return redisStore;
-  storeInitAttempted = true;
-
-  if (!redis || redis.status !== "ready") {
-    console.log("[rate-limit] Redis not ready, using in-memory store");
-    return null;
-  }
-
-  try {
-    const { default: RedisStore } = require("rate-limit-redis");
-
-    redisStore = new RedisStore({
-      sendCommand: (...args) => redis.call(...args),
+  if (liveRedis) {
+    store = new RedisStore({
+      sendCommand: (...args) => liveRedis.call(...args),
     });
-
     console.log("[rate-limit] Using Redis store");
-    return redisStore;
-  } catch (err) {
-    console.warn("[rate-limit] Redis store init failed, using in-memory:", err.message);
-    return null;
+  } else {
+    console.log("[rate-limit] Using memory store");
   }
+
+  return rateLimit({
+    windowMs: overrides.windowMs ?? config.rateLimitWindowMs,
+    max: overrides.max ?? config.rateLimitMax,
+    message: { error: "Too many requests, please try again later" },
+    standardHeaders: true,
+    legacyHeaders: false,
+    ...(store ? { store } : {}),
+  });
 }
 
-function createLimiter() {
-  let limiterInstance = null;
+let currentHandler = null;
 
-  return (req, res, next) => {
-    if (!limiterInstance) {
-      const store = getRedisStore();
-      limiterInstance = rateLimit({
-        windowMs: config.rateLimitWindowMs,
-        max: config.rateLimitMax,
-        message: { error: "Too many requests, please try again later" },
-        standardHeaders: true,
-        legacyHeaders: false,
-        ...(store ? { store } : {}),
-      });
-    }
-    limiterInstance(req, res, next);
-  };
+function proxyMiddleware(req, res, next) {
+  return currentHandler(req, res, next);
 }
 
-module.exports = createLimiter();
+function initRateLimiter(overrides = {}) {
+  currentHandler = buildLimiter(overrides);
+}
+
+function resetLimiter(overrides = {}) {
+  currentHandler = buildLimiter(overrides);
+}
+
+module.exports = proxyMiddleware;
+module.exports.initRateLimiter = initRateLimiter;
+module.exports.resetLimiter = resetLimiter;
