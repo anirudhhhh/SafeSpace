@@ -16,7 +16,6 @@ async function protect(req, res, next) {
 
     const decoded = jwt.verify(token, config.jwtSecret);
 
-    // 🔥 no DB call
     req.user = { _id: decoded.id };
 
     next();

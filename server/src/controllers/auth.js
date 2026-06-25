@@ -22,7 +22,6 @@ async function register(req, res) {
       return res.status(400).json({ error: "Email and password required" });
     }
 
-    // 🔥 lean for faster check
     const existingUser = await User.findOne({ email: lowerEmail }).lean();
     if (existingUser) {
       return res.status(400).json({ error: "Email already registered" });

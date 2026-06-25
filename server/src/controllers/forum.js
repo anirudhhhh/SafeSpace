@@ -9,6 +9,7 @@ const {
   CACHE_TTL,
 } = require("../middleware/cache");
 
+// ================= UTILS =================
 async function findSubspaceByIdentifier(rawIdentifier) {
   const identifier = (rawIdentifier || "").trim();
   const normalizedName = identifier.toLowerCase();
@@ -19,11 +20,8 @@ async function findSubspaceByIdentifier(rawIdentifier) {
 }
 
 function sanitizePost(post, userId) {
-  const authorId = (
-    post.author?._id?.toString() ??
-    post.author?.toString() ??
-    ""
-  );
+  const authorId =
+    post.author?._id?.toString() ?? post.author?.toString() ?? "";
   const isOwner = !!userId && !!authorId && authorId === userId.toString();
 
   const hasUpvoted = userId
@@ -32,7 +30,7 @@ function sanitizePost(post, userId) {
 
   const author = post.isAnonymous
     ? { displayName: "Anonymous" }
-    : post.author ?? { displayName: "Unknown" };
+    : (post.author ?? { displayName: "Unknown" });
 
   const { author: _rawAuthor, upvotes: _up, ...rest } = post;
 
@@ -45,11 +43,8 @@ function sanitizePost(post, userId) {
 }
 
 function sanitizeComment(comment, userId) {
-  const authorId = (
-    comment.author?._id?.toString() ??
-    comment.author?.toString() ??
-    ""
-  );
+  const authorId =
+    comment.author?._id?.toString() ?? comment.author?.toString() ?? "";
   const isOwner = !!userId && !!authorId && authorId === userId.toString();
 
   if (comment.isAnonymous) {
@@ -63,6 +58,7 @@ function sanitizeComment(comment, userId) {
   return { ...comment, isOwner };
 }
 
+// ================= SUBSPACES =================
 async function createSubspace(req, res) {
   try {
     const { name, description, isPrivate } = req.body;
@@ -95,6 +91,7 @@ async function createSubspace(req, res) {
       postCount: 0,
     });
 
+    // Invalidate public subspace listing cache — new subspace should appear
     invalidateCache(CACHE_KEYS.PUBLIC_SUBSPACES);
 
     res.status(201).json(subspace);
@@ -105,6 +102,7 @@ async function createSubspace(req, res) {
 
 async function getSubspaces(req, res) {
   try {
+    // Cache-aside: serve from Redis if available, otherwise query MongoDB
     const cached = await getCache(CACHE_KEYS.PUBLIC_SUBSPACES);
     if (cached) return res.json(cached);
 
@@ -114,7 +112,11 @@ async function getSubspaces(req, res) {
       .select("name slug memberCount postCount description")
       .lean();
 
-    setCache(CACHE_KEYS.PUBLIC_SUBSPACES, subspaces, CACHE_TTL.PUBLIC_SUBSPACES);
+    setCache(
+      CACHE_KEYS.PUBLIC_SUBSPACES,
+      subspaces,
+      CACHE_TTL.PUBLIC_SUBSPACES,
+    );
 
     res.json(subspaces);
   } catch {
@@ -168,6 +170,7 @@ async function deleteSubspace(req, res) {
     await Comment.deleteMany({ subspace: subspace._id });
     await Subspace.deleteOne({ _id: subspace._id });
 
+    // Invalidate cache — subspace removed from public listing
     invalidateCache(CACHE_KEYS.PUBLIC_SUBSPACES);
 
     res.json({ deleted: true });
@@ -190,6 +193,7 @@ async function joinSubspace(req, res) {
       await subspace.save();
     }
 
+    // Invalidate cache — memberCount changed in public listing
     invalidateCache(CACHE_KEYS.PUBLIC_SUBSPACES);
 
     res.json({ joined: true });
@@ -198,6 +202,7 @@ async function joinSubspace(req, res) {
   }
 }
 
+// ================= POSTS =================
 async function createPost(req, res) {
   try {
     const { title, content, isAnonymous, tags } = req.body;
@@ -218,6 +223,7 @@ async function createPost(req, res) {
       () => {},
     );
 
+    // Invalidate cache — postCount changed in public listing
     invalidateCache(CACHE_KEYS.PUBLIC_SUBSPACES);
 
     res.status(201).json(post);
@@ -314,6 +320,7 @@ async function deletePost(req, res) {
   }
 }
 
+// ================= COMMENTS =================
 async function createComment(req, res) {
   try {
     const { content, isAnonymous } = req.body;
@@ -325,6 +332,7 @@ async function createComment(req, res) {
       isAnonymous: isAnonymous === true || isAnonymous === "true",
     });
 
+    // Increment comment count on the post
     Post.updateOne(
       { _id: req.params.postId },
       { $inc: { commentCount: 1 } },
@@ -347,10 +355,9 @@ async function deleteComment(req, res) {
 
     await Comment.deleteOne({ _id: comment._id });
 
-    Post.updateOne(
-      { _id: comment.post },
-      { $inc: { commentCount: -1 } },
-    ).catch(() => {});
+    Post.updateOne({ _id: comment.post }, { $inc: { commentCount: -1 } }).catch(
+      () => {},
+    );
 
     res.json({ deleted: true });
   } catch {
@@ -374,6 +381,7 @@ async function getComments(req, res) {
   }
 }
 
+// ================= FEED =================
 async function getFeed(req, res) {
   try {
     const sort =
@@ -400,6 +408,7 @@ async function getUserSubspaces(req, res) {
   try {
     const userId = req.user._id;
 
+    // Phase 1: two parallel queries instead of three sequential
     const [memberOrCreated, authoredPostSubspaceIds] = await Promise.all([
       Subspace.find({ $or: [{ members: userId }, { createdBy: userId }] })
         .select("name slug memberCount description createdBy")
@@ -424,10 +433,7 @@ async function getUserSubspaces(req, res) {
         {
           $match: {
             subspace: {
-              $in: [
-                ...memberOrCreated.map((s) => s._id),
-                ...missingIds,
-              ],
+              $in: [...memberOrCreated.map((s) => s._id), ...missingIds],
             },
           },
         },
@@ -440,9 +446,7 @@ async function getUserSubspaces(req, res) {
     const subspaceList = [...map.values()];
     if (subspaceList.length === 0) return res.json([]);
 
-    const countMap = new Map(
-      counts.map((c) => [c._id.toString(), c.count]),
-    );
+    const countMap = new Map(counts.map((c) => [c._id.toString(), c.count]));
 
     const bulkOps = subspaceList.map((s) => ({
       updateOne: {
