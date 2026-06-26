@@ -1,0 +1,172 @@
+{
+    "metrics": {
+        "vus_max": {
+            "value": 30,
+            "min": 30,
+            "max": 30
+        },
+        "http_req_failed": {
+            "passes": 638,
+            "fails": 887,
+            "thresholds": {
+                "rate<0.9": false
+            },
+            "value": 0.4183606557377049
+        },
+        "feed_duration": {
+            "avg": 1984.7894414715724,
+            "min": 72.158,
+            "med": 1991.923,
+            "max": 4597.237,
+            "p(90)": 2765.6914,
+            "p(95)": 2944.8607999999995
+        },
+        "iterations": {
+            "count": 613,
+            "rate": 2.295280574385988
+        },
+        "http_req_sending": {
+            "p(95)": 0.038,
+            "avg": 0.016327213114754057,
+            "min": 0,
+            "med": 0.012,
+            "max": 0.598,
+            "p(90)": 0.030600000000000033
+        },
+        "login_duration": {
+            "p(90)": 5000.753,
+            "p(95)": 5000.7988,
+            "avg": 3127.72890375204,
+            "min": 0,
+            "med": 3310.85,
+            "max": 5001.372
+        },
+        "unexpected_auth_failures": {
+            "count": 638,
+            "rate": 2.388889080682317
+        },
+        "http_req_duration": {
+            "p(95)": 5000.7868,
+            "avg": 3073.068965901638,
+            "min": 0,
+            "med": 3267.961,
+            "max": 5002.234,
+            "p(90)": 5000.726
+        },
+        "iteration_duration": {
+            "med": 10105.294791,
+            "max": 13291.535334,
+            "p(90)": 10482.0073916,
+            "p(95)": 10720.2993,
+            "avg": 9573.273724849929,
+            "min": 937.315042
+        },
+        "http_req_receiving": {
+            "avg": 0.028232131147540897,
+            "min": 0,
+            "med": 0.02,
+            "max": 1.705,
+            "p(90)": 0.063,
+            "p(95)": 0.078
+        },
+        "http_req_connecting": {
+            "max": 3970.337,
+            "p(90)": 0.297,
+            "p(95)": 157.43159999999986,
+            "avg": 65.74656655737708,
+            "min": 0,
+            "med": 0
+        },
+        "http_req_waiting": {
+            "p(95)": 5000.768,
+            "avg": 3073.024406557379,
+            "min": 0,
+            "med": 3267.931,
+            "max": 5002.214,
+            "p(90)": 5000.703
+        },
+        "register_duration": {
+            "avg": 3549.233787928221,
+            "min": 0,
+            "med": 4306.412,
+            "max": 5002.234,
+            "p(90)": 5000.7428,
+            "p(95)": 5000.8076
+        },
+        "checks": {
+            "passes": 887,
+            "fails": 638,
+            "value": 0.5816393442622951
+        },
+        "data_sent": {
+            "count": 333161,
+            "rate": 1247.4681426476513
+        },
+        "vus": {
+            "value": 1,
+            "min": 0,
+            "max": 30
+        },
+        "http_req_tls_handshaking": {
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0,
+            "min": 0,
+            "med": 0,
+            "max": 0
+        },
+        "data_received": {
+            "count": 2870128,
+            "rate": 10746.735798370812
+        },
+        "http_reqs": {
+            "count": 1525,
+            "rate": 5.7101188840760715
+        },
+        "http_req_blocked": {
+            "avg": 66.32514885245878,
+            "min": 0,
+            "med": 0.003,
+            "max": 3970.367,
+            "p(90)": 0.348,
+            "p(95)": 161.5313999999997
+        },
+        "http_req_duration{expected_response:true}": {
+            "p(90)": 4335.999400000001,
+            "p(95)": 4545.684,
+            "avg": 2843.4866268320184,
+            "min": 72.158,
+            "med": 2896.8,
+            "max": 4958.359
+        }
+    },
+    "root_group": {
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "register: 201 or 400 (dup) or 429 (rate limited)": {
+                    "id": "10488eff670dea87c7cf4a2fb23e3df9",
+                    "passes": 289,
+                    "fails": 324,
+                    "name": "register: 201 or 400 (dup) or 429 (rate limited)",
+                    "path": "::register: 201 or 400 (dup) or 429 (rate limited)"
+                },
+                "login: 200 or 429": {
+                    "fails": 314,
+                    "name": "login: 200 or 429",
+                    "path": "::login: 200 or 429",
+                    "id": "a0edfcf820a2e94f65ae9f376358d9bb",
+                    "passes": 299
+                },
+                "feed: 200 or 429": {
+                    "name": "feed: 200 or 429",
+                    "path": "::feed: 200 or 429",
+                    "id": "1bbe1efc21dda500bf0e674c3041f3f8",
+                    "passes": 299,
+                    "fails": 0
+                }
+            }
+    }
+}
